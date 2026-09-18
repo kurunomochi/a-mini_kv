@@ -5,6 +5,7 @@ enum ParseError {
     UnknownCommand,
     InvalidArguments,
 }
+#[derive(Debug)]
 enum Response {
     Ok,
     Value(Option<String>),
@@ -55,27 +56,65 @@ impl Database{
     let mut a =input.split_whitespace();
     let cmd = a.next().ok_or(ParseError::EmptyCommand)?;
     match cmd {
-        "SET" => {
+        "Set" => {
             let key = a.next().ok_or(ParseError::InvalidArguments)?.to_string();
             let value = a.next().ok_or(ParseError::InvalidArguments)?.to_string();
             Ok(Command::Set { key, value })
         }
-        "GET" => {
+        "Get" => {
             let key = a.next().ok_or(ParseError::InvalidArguments)?.to_string();
             Ok(Command::Get { key })
         }
-        "DELETE" => {
+        "Delete" => {
             let key = a.next().ok_or(ParseError::InvalidArguments)?.to_string();
             Ok(Command::Delete { key })
         }
-        other => Err(ParseError::UnknownCommand),
+        _ => Err(ParseError::UnknownCommand),
     }
 }
 }   
 fn main(){
     let mut db = Database::new();
-    db.set("name".to_string(),"shinni".to_string());
-    println!("{:?}",db.get("name"));
-    println!("{:?}",db.delete("name"));
-    println!("{:?}",db.get("name"));
+    let commands =["Set name shini","Get name","Delete name","Get name"];
+    for input in commands{
+        match Database::parse_command(input){
+            Ok(command)=>{let response = db.excute(command);
+            println!("{:?}",response);
+        }
+            Err(error)=>{
+                println!("{:?}",error)
+
+
+            }
+
+
+        }
+
+
+    }
+}
+#[cfg(test)]
+mod tests{
+    use super::*;
+    #[test]
+    fn test_set_and_get(){
+        let mut db =Database::new();
+        let command =Database::parse_command("Set name shini").unwrap();
+        let response =db.excute(command);
+        assert!(matches!(response,Response::Ok));
+        let command = Database::parse_command("Get name").unwrap();
+        let response =db.excute(command);
+        assert!(matches!(response,Response::Value(Some(value))if value =="shini"));
+        let command = Database::parse_command("Delete name").unwrap();
+        let response = db.excute(command);
+        assert!(matches!(response,Response::Deleted(true)));
+        let command = Database::parse_command("Get name").unwrap();
+        let response =db.excute(command);
+        assert!(matches!(response,Response::Value(None)));
+
+    }
+
+
+
+
 }
