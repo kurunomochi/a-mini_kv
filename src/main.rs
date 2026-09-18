@@ -1,4 +1,9 @@
 use std::collections::HashMap;
+use tokio::net::{TcpStream, TcpListener};
+use std::sync::Arc;
+use tokio::sync::Mutex;
+type SharedDatabase = Arc<Mutex<Database>>;
+use tokio::io::{AsyncBufReadExt,AsyncWriteExt,BufReader};
 #[derive(Debug)]
 enum ParseError {
     EmptyCommand,
@@ -11,15 +16,16 @@ enum Response {
     Value(Option<String>),
     Deleted(bool),
 }
+#[derive(Debug)]
 enum Command{
-    Set{
+    SET{
         key:String,
         value:String
     },
-    Get{
+    GET{
         key:String,
     },
-    Delete{
+    DELETE{
         key:String,
     }
 
@@ -33,20 +39,20 @@ impl Database{
     fn new()->Self{
         Database{kv:HashMap::new()}
     }
-    fn set(&mut self,key:String,value:String){
+    fn SET(&mut self,key:String,value:String){
         self.kv.insert(key,value);
     }
-    fn get(&self,key:&str)->Option<&str>{
+    fn GET(&self,key:&str)->Option<&str>{
       self.kv.get(key).map(|v|v.as_str())
     }
-    fn delete(&mut self,key:&str)->bool{
+    fn DELETE(&mut self,key:&str)->bool{
         self.kv.remove(key).is_some()
     }
     fn excute(&mut self,command:Command)->Response{
         match command{
-            Command::Set{key,value}=>{self.set(key,value);Response::Ok},
-            Command::Get{key}=>{    Response::Value(self.get(&key).map(|s| s.to_string()))},
-            Command::Delete{key}=>{Response::Deleted(self.delete(&key))},
+            Command::SET{key,value}=>{self.SET(key,value);Response::Ok},
+            Command::GET{key}=>{    Response::Value(self.GET(&key).map(|s| s.to_string()))},
+            Command::DELETE{key}=>{Response::Deleted(self.DELETE(&key))},
 
         }
 
@@ -59,40 +65,76 @@ impl Database{
         "Set" => {
             let key = a.next().ok_or(ParseError::InvalidArguments)?.to_string();
             let value = a.next().ok_or(ParseError::InvalidArguments)?.to_string();
-            Ok(Command::Set { key, value })
+            Ok(Command::SET { key, value })
         }
         "Get" => {
             let key = a.next().ok_or(ParseError::InvalidArguments)?.to_string();
-            Ok(Command::Get { key })
+            Ok(Command::GET { key })
         }
         "Delete" => {
             let key = a.next().ok_or(ParseError::InvalidArguments)?.to_string();
-            Ok(Command::Delete { key })
+            Ok(Command::DELETE { key })
         }
         _ => Err(ParseError::UnknownCommand),
     }
 }
 }   
-fn main(){
-    let mut db = Database::new();
-    let commands =["Set name shini","Get name","Delete name","Get name"];
-    for input in commands{
-        match Database::parse_command(input){
-            Ok(command)=>{let response = db.excute(command);
-            println!("{:?}",response);
-        }
-            Err(error)=>{
-                println!("{:?}",error)
-
-
-            }
-
-
-        }
+#[tokio::main]
+async fn main(){
+    let listener = TcpListener::bind("127.0.0.1:6379").await.unwrap();
+    let db =Arc::new(Mutex::new(Database::new()));
+    loop{
+        let (socket,_) = listener.accept().await.unwrap();
+        println!("successful");
+        let db =db.clone();
+        tokio::spawn(async move{process(socket,db).await;});
 
 
     }
+   
 }
+async fn process(socket:TcpStream,db:SharedDatabase)->Result<(),Box<dyn std::error::Error+Send + Sync>>{
+    
+    
+    let mut line = String::new();
+    let (read_half,mut writer)=socket.into_split();
+    let mut reader = BufReader::new(read_half);
+    loop{
+        line.clear();
+        let size = reader.read_line(&mut line).await?;
+        if size ==0 {break;}
+        let input = line.trim_end_matches(&['\r', '\n'][..]);
+        let response = match Database::parse_command(input){
+            Ok(command)=>{println!("successful{:?}",command);let mut db = db.lock().await;db.excute(command)},
+             Err(error) => {
+                 let output = format!("ERR {:?}\n", error);
+                writer.write_all(output.as_bytes()).await?;
+                 continue;
+            }
+
+            
+            
+
+        };
+let output = match response {
+    Response::Ok => "OK\n".to_string(),
+    Response::Value(Some(value)) => format!("VALUE {}\n", value),
+    Response::Value(None) => "NOT_FOUND\n".to_string(),
+    Response::Deleted(true) => "DELETED\n".to_string(),
+    Response::Deleted(false) => "NOT_FOUND\n".to_string(),
+};
+writer.write_all(output.as_bytes()).await?;
+       
+    }   
+     
+   Ok(())
+
+
+}
+
+
+
+
 #[cfg(test)]
 mod tests{
     use super::*;
