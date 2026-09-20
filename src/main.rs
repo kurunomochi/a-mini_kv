@@ -55,7 +55,7 @@ enum Command {
     DELETE { key: String },
 }
 struct Connection {
-    reader: BufReader<OwnedReadHalf>,
+reader: BufReader<OwnedReadHalf>,
     writer: OwnedWriteHalf,
 }
 impl Connection {
@@ -97,7 +97,7 @@ impl Connection {
         Ok(number)
     }
     async fn read_frame(&mut self) -> Result<Frame, BoxError> {
-        let mut prefix = [0u8; 1];
+         let mut prefix = [0u8; 1];
 
         self.reader.read_exact(&mut prefix).await?;
 
@@ -168,7 +168,7 @@ impl Connection {
         }
     }
     async fn write_frame(&mut self, frame: Frame) -> Result<(), BoxError> {
-        match frame {
+match frame {
             Frame::SimpleString(value) => {
                 self.writer.write_all(b"+").await?;
                 self.writer.write_all(value.as_bytes()).await?;
@@ -282,6 +282,9 @@ fn frame_to_string(frame: Frame) -> Result<String, ParseError> {
 
         _ => Err(ParseError::InvalidFrame),
     }
+ 
+
+
 }
 fn frame_to_command(frame: Frame) -> Result<Command, ParseError> {
     let frames = match frame {
@@ -323,7 +326,7 @@ fn frame_to_command(frame: Frame) -> Result<Command, ParseError> {
             })
         }
 
-        _ => Err(ParseError::UnknownCommand),
+     _ => Err(ParseError::UnknownCommand),       
     }
 }
 
@@ -373,4 +376,8 @@ mod tests {
         let response = db.execute(command);
         assert!(matches!(response, Response::Value(None)));
     }
-}
+    }
+
+
+
+
